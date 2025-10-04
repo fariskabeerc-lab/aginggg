@@ -108,22 +108,19 @@ def transform_data(df):
 st.set_page_config(layout="wide", page_title="Single-Outlet Inventory Aging Analysis", initial_sidebar_state="expanded")
 
 st.title("📊 Inventory Aging Analysis by Single Outlet")
-st.markdown("Select an outlet from the sidebar to view its inventory aging distribution.")
 
 # --- 4. Sidebar Filters ---
 st.sidebar.header("Filter & View Options")
 
-# 1. Outlet Selection Filter (SIMPLIFIED TO SINGLE SELECT)
+# 1. Outlet Selection Filter
 st.sidebar.subheader("Outlet Selection")
-
-# Use st.selectbox for single selection. We include a placeholder for initial state.
 selected_outlet = st.sidebar.selectbox(
     "Select an Outlet:",
     options=['--- Select an Outlet ---'] + OUTLET_OPTIONS,
     index=0 
 )
 
-# Stop the app if no valid outlet is selected (i.e., the placeholder is still active)
+# Stop the app if no valid outlet is selected
 if selected_outlet == '--- Select an Outlet ---':
     st.info("Please select an outlet from the dropdown menu to begin the analysis.")
     st.stop()
@@ -190,11 +187,34 @@ else:
 
 
 # Apply filters
-df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)].copy() # Use .copy() to avoid SettingWithCopyWarning
-
-# Since we are loading only ONE outlet, the long data is already aggregated by outlet.
-# We just need to filter categories.
+df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)].copy() 
 df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)].copy()
+
+
+# --- 4.5. Summary Metrics (NEW SECTION) ---
+total_aging_value = df_filtered_long['Value'].sum()
+total_aging_qty = df_filtered_long['Qty'].sum()
+
+st.markdown(f"### Current View Summary for Outlet: {selected_outlet}")
+st.markdown("---")
+
+col_val, col_qty, col_empty = st.columns([1, 1, 2])
+
+with col_val:
+    st.metric(
+        label="Total Aged Inventory Value",
+        value=f"${total_aging_value:,.2f}",
+        help="Sum of 'Aging Value' for all selected categories and aging buckets."
+    )
+
+with col_qty:
+    st.metric(
+        label="Total Aged Inventory Quantity",
+        value=f"{total_aging_qty:,.0f} Units",
+        help="Sum of 'Aging Quantity' for all selected categories and aging buckets."
+    )
+
+st.markdown("---")
 
 
 # --- 5. Visualization Functions ---
@@ -202,14 +222,12 @@ df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_c
 def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     """Creates a horizontal bar chart for a single aging bucket with dual tooltips."""
     
-    # Filter the long data for the current bucket
     df_bucket = df[(df['Aging Bucket'] == bucket) & (df[metric_col] > 0)]
     
     if df_bucket.empty:
         st.info(f"No {title_suffix} data found for the {bucket} bucket in selected categories.")
         return
 
-    # Sort categories by the metric value (descending)
     df_bucket = df_bucket.sort_values(by=metric_col, ascending=True)
 
     fig = px.bar(
@@ -224,7 +242,6 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     )
     fig.update_layout(height=600, showlegend=False)
     
-    # Custom Hover Template
     custom_hover_template = (
         '<b>Category:</b> %{y}<br>' +
         f'<b>Aging Qty:</b> %{{customdata[0]:{hover_format_qty}}}<br>' +
@@ -232,7 +249,6 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
         '<extra></extra>' 
     )
     
-    # Pass the Qty and Value columns as customdata
     fig.update_traces(customdata=df_bucket[['Qty', 'Value']], 
                       hovertemplate=custom_hover_template)
     
@@ -241,11 +257,9 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
 
 def plot_treemap(df, metric_col, title_suffix, outlet_name):
     """Creates a treemap to show hierarchical contribution by Category and Aging Bucket."""
-    # Filter out 0 values for a meaningful treemap
     df_filtered = df[df[metric_col] > 0]
     if df_filtered.empty: return st.warning("No data to display in the Treemap.")
         
-    # Path is now just Category -> Aging Bucket, with the outlet name in the root constant
     path_list = [px.Constant(f"Outlet: {outlet_name}"), 'Category', 'Aging Bucket']
         
     fig = px.treemap(
@@ -267,18 +281,15 @@ if df_filtered_long.empty:
     st.info("No data to display for the selected outlet and categories.")
 else:
     with tab1:
-        st.header(f"Aging Distribution Analysis for Outlet: {selected_outlet} ({title_suffix})")
+        st.header(f"Aging Distribution Analysis: {title_suffix}")
         st.caption("Hover over any bar to see the Quantity and Value for that category and time bucket.")
         st.markdown("---")
 
-        # Define buckets and colors
         aging_buckets = ['61-90', '91-120', '121-180', '181-360']
         bucket_colors = px.colors.qualitative.Bold 
 
-        # Create two columns for a neat layout of the four charts
         col_charts_1, col_charts_2 = st.columns(2)
         
-        # Plot the four separate horizontal bar charts using the filtered long data
         with col_charts_1:
             plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
             st.markdown("---")
@@ -298,7 +309,6 @@ else:
         st.header(f"Original Data Table (Filtered Wide Format for Outlet: {selected_outlet})")
         st.caption("This table displays the raw data for the selected outlet, filtered by your Category Selection.")
         st.dataframe(df_filtered_wide.drop(columns=['Outlet'], errors='ignore'), use_container_width=True)
-        # We drop the Outlet column from the display table as it's redundant (always the same value)
 
 st.sidebar.markdown("---")
 st.sidebar.caption("App built for single-outlet inventory aging analysis.")
