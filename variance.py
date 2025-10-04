@@ -29,7 +29,7 @@ outlets_files = {
     "SBM": "SBM.xlsx",
     "SML": "SML.xlsx",
     "SPS": "SPS.xlsx",
-    "TTD": "TTD.xlsx",
+    "TTD": "TTD.xlsx"
 }
 
 # Define the custom order of aging buckets (important for charting order)
