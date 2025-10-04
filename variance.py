@@ -8,7 +8,7 @@ import plotly.express as px
 # Dictionary mapping Outlet Codes (to be shown in filter) to Excel file names
 OUTLET_FILES = {
     "AML": "AML.xlsx",
-    "ATT": "AZT.xlsx", 
+    "AZT": "AZT.xlsx", 
     "AZR": "AZR.xlsx",
     "BPS": "BPS.xlsx",
     "FAH": "FAH.xlsx",
