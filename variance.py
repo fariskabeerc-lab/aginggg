@@ -28,6 +28,9 @@ OUTLET_FILES = {
 ALL_OUTLETS = list(OUTLET_FILES.keys())
 OUTLET_OPTIONS = ALL_OUTLETS
 
+# Define the order of aging buckets
+AGING_BUCKETS = ['61-90', '91-120', '121-180', '181-360']
+
 
 # --- 1. Data Preparation (Loading a Single File) ---
 
@@ -93,8 +96,7 @@ def transform_data(df):
     df_combined_long = pd.merge(df_qty_long, df_value_long, on=['Outlet', 'Category', 'Aging Bucket'])
 
     # Define a custom order for the aging buckets
-    age_order = ['61-90', '91-120', '121-180', '181-360']
-    df_combined_long['Aging Bucket'] = pd.Categorical(df_combined_long['Aging Bucket'], categories=age_order, ordered=True)
+    df_combined_long['Aging Bucket'] = pd.Categorical(df_combined_long['Aging Bucket'], categories=AGING_BUCKETS, ordered=True)
     
     # Fill NaN values introduced by merging or loading with 0 for metrics
     df_combined_long['Qty'] = df_combined_long['Qty'].fillna(0)
@@ -191,29 +193,55 @@ df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)].copy()
 df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)].copy()
 
 
-# --- 4.5. Summary Metrics (NEW SECTION) ---
-total_aging_value = df_filtered_long['Value'].sum()
-total_aging_qty = df_filtered_long['Qty'].sum()
+# --- 4.5. Summary Metrics (UPDATED TO SHOW BUCKET-WISE TOTALS) ---
+
+# Calculate totals per Aging Bucket
+summary_df = df_filtered_long.groupby('Aging Bucket')[['Value', 'Qty']].sum().reindex(AGING_BUCKETS).fillna(0)
+grand_total_value = summary_df['Value'].sum()
+grand_total_qty = summary_df['Qty'].sum()
+
 
 st.markdown(f"### Current View Summary for Outlet: {selected_outlet}")
+
+# Row 1: Grand Totals
+col_title, col_val_total, col_qty_total = st.columns([1.5, 1, 1])
+
+with col_title:
+    st.subheader("Inventory Grand Totals")
+
+with col_val_total:
+    st.metric(
+        label="Total Aged Value",
+        value=f"${grand_total_value:,.2f}"
+    )
+
+with col_qty_total:
+    st.metric(
+        label="Total Aged Quantity",
+        value=f"{grand_total_qty:,.0f} Units"
+    )
+
 st.markdown("---")
 
-col_val, col_qty, col_empty = st.columns([1, 1, 2])
+# Row 2: Bucket-Wise Breakdown
+st.subheader("Value and Quantity by Aging Bucket")
 
-with col_val:
-    st.metric(
-        label="Total Aged Inventory Value",
-        value=f"${total_aging_value:,.2f}",
-        help="Sum of 'Aging Value' for all selected categories and aging buckets."
-    )
+# Create columns for the bucket breakdown (8 columns: 4 for Value, 4 for Qty)
+# We'll use 4 main columns, each holding a Value and Qty pair
+cols_bucket = st.columns(4) 
 
-with col_qty:
-    st.metric(
-        label="Total Aged Inventory Quantity",
-        value=f"{total_aging_qty:,.0f} Units",
-        help="Sum of 'Aging Quantity' for all selected categories and aging buckets."
-    )
-
+for i, bucket in enumerate(AGING_BUCKETS):
+    with cols_bucket[i]:
+        st.markdown(f"**{bucket} Days**")
+        bucket_value = summary_df.loc[bucket, 'Value']
+        bucket_qty = summary_df.loc[bucket, 'Qty']
+        
+        # Display Value
+        st.markdown(f"💰 Value: **${bucket_value:,.2f}**")
+        
+        # Display Quantity
+        st.markdown(f"📦 Qty: **{bucket_qty:,.0f}**")
+        
 st.markdown("---")
 
 
@@ -285,20 +313,19 @@ else:
         st.caption("Hover over any bar to see the Quantity and Value for that category and time bucket.")
         st.markdown("---")
 
-        aging_buckets = ['61-90', '91-120', '121-180', '181-360']
         bucket_colors = px.colors.qualitative.Bold 
 
         col_charts_1, col_charts_2 = st.columns(2)
         
         with col_charts_1:
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
+            plot_horizontal_bar(df_filtered_long, metric_col, AGING_BUCKETS[0], title_suffix, bucket_colors[0])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[1], title_suffix, bucket_colors[1])
+            plot_horizontal_bar(df_filtered_long, metric_col, AGING_BUCKETS[1], title_suffix, bucket_colors[1])
 
         with col_charts_2:
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[2], title_suffix, bucket_colors[2])
+            plot_horizontal_bar(df_filtered_long, metric_col, AGING_BUCKETS[2], title_suffix, bucket_colors[2])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[3], title_suffix, bucket_colors[3])
+            plot_horizontal_bar(df_filtered_long, metric_col, AGING_BUCKETS[3], title_suffix, bucket_colors[3])
 
     with tab2:
         st.header(f"Hierarchical Aging Contribution: {title_suffix}")
