@@ -26,22 +26,31 @@ OUTLET_FILES = {
     "TTD": "TTD.xlsx",
 }
 ALL_OUTLETS = list(OUTLET_FILES.keys())
+# Add an option to select ALL outlets and aggregate the data
+AGGREGATE_OPTION = "ALL OUTLETS (Aggregated)" 
+OUTLET_OPTIONS = [AGGREGATE_OPTION] + ALL_OUTLETS
 
 
 # --- 1. Data Preparation (Loading Multiple Files) ---
 
 @st.cache_data
-def load_data(selected_outlets):
+def load_data(selected_outlet_single):
     """
-    Loads data from the Excel files corresponding to the selected outlets,
-    adds an 'Outlet' column to each, and concatenates them.
+    Loads data for a single selected outlet or all outlets if 'ALL' is chosen.
     """
-    if not selected_outlets:
+    
+    if selected_outlet_single == AGGREGATE_OPTION:
+        outlets_to_load = ALL_OUTLETS
+    else:
+        # Load only the single selected outlet
+        outlets_to_load = [selected_outlet_single]
+        
+    if not outlets_to_load:
         return pd.DataFrame()
         
     all_dfs = []
     
-    for outlet_code in selected_outlets:
+    for outlet_code in outlets_to_load:
         file_name = OUTLET_FILES.get(outlet_code)
         if file_name:
             try:
@@ -111,42 +120,32 @@ def transform_data(df):
 
 # --- 3. Streamlit App Layout and Logic ---
 
-st.set_page_config(layout="wide", page_title="Multi-Outlet Inventory Aging Analysis", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="Single-Outlet Inventory Aging Analysis", initial_sidebar_state="expanded")
 
-st.title("📊 Multi-Outlet Inventory Aging Analysis")
-st.markdown("Visualizing the distribution of Aged Inventory across specific time buckets and outlets.")
+st.title("📊 Inventory Aging Analysis by Single Outlet")
+st.markdown("Select an outlet from the sidebar to view its inventory aging distribution.")
 
 # --- 4. Sidebar Filters ---
 st.sidebar.header("Filter & View Options")
 
-# 1. Outlet Selection Filter (NEW)
+# 1. Outlet Selection Filter (UPDATED TO SINGLE SELECT)
 st.sidebar.subheader("Outlet Selection")
-select_all_outlets = st.sidebar.checkbox("Select All Outlets", value=True, key='outlet_all')
 
-if select_all_outlets:
-    selected_outlets = ALL_OUTLETS
-    st.sidebar.multiselect(
-        "Individual Outlets:",
-        options=ALL_OUTLETS,
-        default=ALL_OUTLETS,
-        disabled=True,
-        key='outlet_list_disabled'
-    )
-else:
-    selected_outlets = st.sidebar.multiselect(
-        "Individual Outlets:",
-        options=ALL_OUTLETS,
-        default=ALL_OUTLETS[:3], # Default to a few for testing
-        key='outlet_list_enabled' 
-    )
+# Use st.selectbox for single selection
+selected_outlet_single = st.sidebar.selectbox(
+    "Select an Outlet:",
+    options=OUTLET_OPTIONS,
+    index=0 # Default to the 'ALL OUTLETS' option
+)
 
-if not selected_outlets:
-    st.warning("Please select at least one outlet to load data.")
+if not selected_outlet_single:
+    st.info("Please select an outlet to load data.")
     st.stop()
 
 
-# Load and transform data based on the selected outlets
-df_wide_original = load_data(selected_outlets)
+# Load and transform data based on the single selected outlet (or all)
+# If 'ALL' is selected, the load_data function aggregates them.
+df_wide_original = load_data(selected_outlet_single)
 df_combined_long = transform_data(df_wide_original.copy())
 
 # Check if data loading or transformation failed
@@ -206,41 +205,33 @@ else:
 
 
 # Apply filters
-df_filtered_long = df_plot[
-    (df_plot['Category'].isin(selected_categories)) &
-    (df_plot['Outlet'].isin(selected_outlets))
-]
+df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)]
 
-# Note: Filtering the wide data (tab3) is more complex with multi-outlet, 
-# so we'll filter the combined_wide data for display.
-df_filtered_wide = df_wide_original[
-    (df_wide_original['Category'].isin(selected_categories)) &
-    (df_wide_original['Outlet'].isin(selected_outlets))
-]
+# Group the data for the aggregated view (if 'ALL OUTLETS' is selected)
+df_filtered_long_grouped = df_filtered_long.groupby(['Category', 'Aging Bucket'])[['Qty', 'Value']].sum().reset_index()
+
+
+# Note: Filtering the wide data (tab3) is done directly on the loaded wide data.
+df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)]
 
 
 # --- 5. Visualization Functions ---
 
-# ... (plot_horizontal_bar and plot_treemap functions remain the same but now use the filtered data) ...
-
 def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     """Creates a horizontal bar chart for a single aging bucket with dual tooltips."""
-    # Group data by Category (and Outlet if Treemap is used)
-    # For the bar chart, we aggregate data across all selected outlets
-    df_bucket = df[(df['Aging Bucket'] == bucket) & (df[metric_col] > 0)]
-    df_grouped = df_bucket.groupby('Category')[['Qty', 'Value']].sum().reset_index()
-    df_grouped.rename(columns={'Qty': 'Qty', 'Value': 'Value'}, inplace=True)
-    df_grouped[metric_col] = df_grouped[metric_col] # Keep the selected metric column name consistent
     
-    if df_grouped.empty:
-        st.info(f"No {title_suffix} data found for the {bucket} bucket in selected categories/outlets.")
+    # Use the pre-grouped data (which aggregates across outlets if 'ALL' was selected)
+    df_bucket = df[(df['Aging Bucket'] == bucket) & (df[metric_col] > 0)]
+    
+    if df_bucket.empty:
+        st.info(f"No {title_suffix} data found for the {bucket} bucket in selected categories.")
         return
 
     # Sort categories by the metric value (descending)
-    df_grouped = df_grouped.sort_values(by=metric_col, ascending=True)
+    df_bucket = df_bucket.sort_values(by=metric_col, ascending=True)
 
     fig = px.bar(
-        df_grouped,
+        df_bucket,
         x=metric_col,
         y='Category',
         orientation='h', 
@@ -260,27 +251,32 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     )
     
     # Pass the Qty and Value columns as customdata
-    fig.update_traces(customdata=df_grouped[['Qty', 'Value']], 
+    fig.update_traces(customdata=df_bucket[['Qty', 'Value']], 
                       hovertemplate=custom_hover_template)
     
     st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_treemap(df, metric_col, title_suffix):
-    """Creates a treemap to show hierarchical contribution by Outlet, then Category."""
+    """Creates a treemap to show hierarchical contribution by Category and Aging Bucket."""
     # Filter out 0 values for a meaningful treemap
     df_filtered = df[df[metric_col] > 0]
     if df_filtered.empty: return st.warning("No data to display in the Treemap.")
         
+    # The path no longer needs 'Outlet' since the input 'df' is already single-outlet or aggregated
+    if selected_outlet_single == AGGREGATE_OPTION:
+        path_list = [px.Constant(AGGREGATE_OPTION), 'Category', 'Aging Bucket']
+    else:
+        path_list = [px.Constant(f"Outlet: {selected_outlet_single}"), 'Category', 'Aging Bucket']
+        
     fig = px.treemap(
         df_filtered,
-        # Now use Outlet as the top level, followed by Category, then Aging Bucket
-        path=[px.Constant("All Selected Inventory"), 'Outlet', 'Category', 'Aging Bucket'],
+        path=path_list,
         values=metric_col,
-        title=f'Hierarchical Aging Contribution by Outlet/Category ({title_suffix})',
+        title=f'Hierarchical Aging Contribution for {selected_outlet_single} ({title_suffix})',
         color=metric_col,
         color_continuous_scale='Reds',
-        hover_data=['Outlet', 'Category', 'Aging Bucket', 'Qty', 'Value'] # Show both metrics here too
+        hover_data=['Category', 'Aging Bucket', 'Qty', 'Value'] 
     )
     fig.update_layout(margin=dict(t=50, l=25, r=25, b=25))
     st.plotly_chart(fig, use_container_width=True)
@@ -288,12 +284,15 @@ def plot_treemap(df, metric_col, title_suffix):
 # --- 6. Main Content Tabs ---
 tab1, tab2, tab3 = st.tabs(["📈 Aging Distribution (Days)", "🌳 Treemap", "📋 Original Table Data"])
 
-if df_filtered_long.empty:
-    st.info("Please select outlets and categories using the sidebar filters to view the data.")
+if df_filtered_long_grouped.empty:
+    st.info("Please select a valid outlet and categories using the sidebar filters to view the data.")
 else:
     with tab1:
         st.header(f"Aging Distribution Analysis: {title_suffix}")
-        st.caption("Data is aggregated across all selected outlets. Hover over any bar to see **both** the total Aging Quantity and Aging Value.")
+        if selected_outlet_single == AGGREGATE_OPTION:
+             st.caption("Data is **aggregated** across all outlets. Hover over any bar to see the total Quantity and Value.")
+        else:
+             st.caption(f"Showing data for **Outlet {selected_outlet_single}**. Hover over any bar to see the Quantity and Value.")
         st.markdown("---")
 
         # Define buckets and colors
@@ -303,26 +302,29 @@ else:
         # Create two columns for a neat layout of the four charts
         col_charts_1, col_charts_2 = st.columns(2)
         
-        # Plot the four separate horizontal bar charts
+        # Plot the four separate horizontal bar charts using the grouped data
         with col_charts_1:
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
+            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[1], title_suffix, bucket_colors[1])
+            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[1], title_suffix, bucket_colors[1])
 
         with col_charts_2:
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[2], title_suffix, bucket_colors[2])
+            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[2], title_suffix, bucket_colors[2])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[3], title_suffix, bucket_colors[3])
+            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[3], title_suffix, bucket_colors[3])
 
     with tab2:
         st.header(f"Hierarchical Aging Contribution: {title_suffix}")
-        plot_treemap(df_filtered_long, metric_col, title_suffix)
-        st.caption("The Treemap shows the hierarchical breakdown: **Outlet** $\\rightarrow$ **Category** $\\rightarrow$ **Aging Bucket**.")
+        # The Treemap must use the raw (non-aggregated) long data to correctly build the hierarchy if 'ALL' is selected
+        plot_treemap(df_filtered_long_grouped, metric_col, title_suffix)
+        st.caption("The Treemap shows the breakdown: **Outlet** $\\rightarrow$ **Category** $\\rightarrow$ **Aging Bucket**.")
 
     with tab3:
-        st.header("Original Data Table (Filtered Wide Format)")
-        st.caption("This table displays the raw data, including the **Outlet** column, filtered by your selections.")
+        st.header(f"Original Data Table (Filtered Wide Format for {selected_outlet_single})")
+        st.caption("This table displays the raw data, including the **Outlet** column, filtered by your Category Selection.")
+        
+        # If 'ALL' is selected, this table will show all selected outlet data combined
         st.dataframe(df_filtered_wide, use_container_width=True)
 
 st.sidebar.markdown("---")
-st.sidebar.caption("App built for multi-outlet inventory aging analysis.")
+st.sidebar.caption("App built for inventory aging analysis.")
