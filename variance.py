@@ -193,7 +193,7 @@ df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)].copy()
 df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)].copy()
 
 
-# --- 4.5. Summary Metrics (UPDATED TO SHOW BUCKET-WISE TOTALS) ---
+# --- 4.5. Summary Metrics (UPDATED TO REMOVE $ SIGN) ---
 
 # Calculate totals per Aging Bucket
 summary_df = df_filtered_long.groupby('Aging Bucket')[['Value', 'Qty']].sum().reindex(AGING_BUCKETS).fillna(0)
@@ -212,7 +212,7 @@ with col_title:
 with col_val_total:
     st.metric(
         label="Total Aged Value",
-        value=f"${grand_total_value:,.2f}"
+        value=f"{grand_total_value:,.2f}" # REMOVED $
     )
 
 with col_qty_total:
@@ -226,8 +226,7 @@ st.markdown("---")
 # Row 2: Bucket-Wise Breakdown
 st.subheader("Value and Quantity by Aging Bucket")
 
-# Create columns for the bucket breakdown (8 columns: 4 for Value, 4 for Qty)
-# We'll use 4 main columns, each holding a Value and Qty pair
+# Create columns for the bucket breakdown 
 cols_bucket = st.columns(4) 
 
 for i, bucket in enumerate(AGING_BUCKETS):
@@ -236,8 +235,8 @@ for i, bucket in enumerate(AGING_BUCKETS):
         bucket_value = summary_df.loc[bucket, 'Value']
         bucket_qty = summary_df.loc[bucket, 'Qty']
         
-        # Display Value
-        st.markdown(f"💰 Value: **${bucket_value:,.2f}**")
+        # Display Value - REMOVED $
+        st.markdown(f"💰 Value: **{bucket_value:,.2f}**")
         
         # Display Quantity
         st.markdown(f"📦 Qty: **{bucket_qty:,.0f}**")
@@ -270,6 +269,7 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     )
     fig.update_layout(height=600, showlegend=False)
     
+    # Custom Hover Template - REMOVED $ from the Value line
     custom_hover_template = (
         '<b>Category:</b> %{y}<br>' +
         f'<b>Aging Qty:</b> %{{customdata[0]:{hover_format_qty}}}<br>' +
