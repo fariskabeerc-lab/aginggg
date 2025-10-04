@@ -26,50 +26,35 @@ OUTLET_FILES = {
     "TTD": "TTD.xlsx",
 }
 ALL_OUTLETS = list(OUTLET_FILES.keys())
-# Add an option to select ALL outlets and aggregate the data
-AGGREGATE_OPTION = "ALL OUTLETS (Aggregated)" 
-OUTLET_OPTIONS = [AGGREGATE_OPTION] + ALL_OUTLETS
+OUTLET_OPTIONS = ALL_OUTLETS
 
 
-# --- 1. Data Preparation (Loading Multiple Files) ---
+# --- 1. Data Preparation (Loading a Single File) ---
 
 @st.cache_data
-def load_data(selected_outlet_single):
+def load_data(selected_outlet):
     """
-    Loads data for a single selected outlet or all outlets if 'ALL' is chosen.
+    Loads data for the single selected outlet.
     """
-    
-    if selected_outlet_single == AGGREGATE_OPTION:
-        outlets_to_load = ALL_OUTLETS
-    else:
-        # Load only the single selected outlet
-        outlets_to_load = [selected_outlet_single]
-        
-    if not outlets_to_load:
+    if not selected_outlet:
         return pd.DataFrame()
-        
-    all_dfs = []
     
-    for outlet_code in outlets_to_load:
-        file_name = OUTLET_FILES.get(outlet_code)
-        if file_name:
-            try:
-                # Read the Excel file
-                df = pd.read_excel(file_name)
-                # Add a new column to identify the outlet
-                df['Outlet'] = outlet_code
-                all_dfs.append(df)
-            except FileNotFoundError:
-                st.warning(f"🚨 Warning: File '{file_name}' for Outlet '{outlet_code}' not found. Skipping.")
-            except Exception as e:
-                st.error(f"An error occurred while reading file '{file_name}': {e}")
-
-    if all_dfs:
-        # Concatenate all loaded dataframes
-        combined_df = pd.concat(all_dfs, ignore_index=True)
-        return combined_df
-    else:
-        st.error("No valid data files were loaded from the selected outlets.")
+    file_name = OUTLET_FILES.get(selected_outlet)
+    if not file_name:
+        st.error(f"Error: No file mapping found for outlet '{selected_outlet}'.")
+        return pd.DataFrame()
+    
+    try:
+        # Read the Excel file
+        df = pd.read_excel(file_name)
+        # Add a new column to identify the outlet
+        df['Outlet'] = selected_outlet
+        return df
+    except FileNotFoundError:
+        st.error(f"🚨 Error: File '{file_name}' for Outlet '{selected_outlet}' not found. Please ensure the file is in the same directory.")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"An error occurred while reading file '{file_name}': {e}")
         return pd.DataFrame()
 
 
@@ -128,29 +113,29 @@ st.markdown("Select an outlet from the sidebar to view its inventory aging distr
 # --- 4. Sidebar Filters ---
 st.sidebar.header("Filter & View Options")
 
-# 1. Outlet Selection Filter (UPDATED TO SINGLE SELECT)
+# 1. Outlet Selection Filter (SIMPLIFIED TO SINGLE SELECT)
 st.sidebar.subheader("Outlet Selection")
 
-# Use st.selectbox for single selection
-selected_outlet_single = st.sidebar.selectbox(
+# Use st.selectbox for single selection. We include a placeholder for initial state.
+selected_outlet = st.sidebar.selectbox(
     "Select an Outlet:",
-    options=OUTLET_OPTIONS,
-    index=0 # Default to the 'ALL OUTLETS' option
+    options=['--- Select an Outlet ---'] + OUTLET_OPTIONS,
+    index=0 
 )
 
-if not selected_outlet_single:
-    st.info("Please select an outlet to load data.")
+# Stop the app if no valid outlet is selected (i.e., the placeholder is still active)
+if selected_outlet == '--- Select an Outlet ---':
+    st.info("Please select an outlet from the dropdown menu to begin the analysis.")
     st.stop()
 
 
-# Load and transform data based on the single selected outlet (or all)
-# If 'ALL' is selected, the load_data function aggregates them.
-df_wide_original = load_data(selected_outlet_single)
+# Load and transform data based on the single selected outlet
+df_wide_original = load_data(selected_outlet)
 df_combined_long = transform_data(df_wide_original.copy())
 
 # Check if data loading or transformation failed
 if df_combined_long.empty:
-    st.info("Data loading failed or returned an empty set. Check warnings above.")
+    st.info(f"Data for {selected_outlet} could not be loaded or is empty. Check warnings above.")
     st.stop()
     
 st.sidebar.markdown("---")
@@ -205,14 +190,11 @@ else:
 
 
 # Apply filters
-df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)]
+df_filtered_long = df_plot[df_plot['Category'].isin(selected_categories)].copy() # Use .copy() to avoid SettingWithCopyWarning
 
-# Group the data for the aggregated view (if 'ALL OUTLETS' is selected)
-df_filtered_long_grouped = df_filtered_long.groupby(['Category', 'Aging Bucket'])[['Qty', 'Value']].sum().reset_index()
-
-
-# Note: Filtering the wide data (tab3) is done directly on the loaded wide data.
-df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)]
+# Since we are loading only ONE outlet, the long data is already aggregated by outlet.
+# We just need to filter categories.
+df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_categories)].copy()
 
 
 # --- 5. Visualization Functions ---
@@ -220,7 +202,7 @@ df_filtered_wide = df_wide_original[df_wide_original['Category'].isin(selected_c
 def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     """Creates a horizontal bar chart for a single aging bucket with dual tooltips."""
     
-    # Use the pre-grouped data (which aggregates across outlets if 'ALL' was selected)
+    # Filter the long data for the current bucket
     df_bucket = df[(df['Aging Bucket'] == bucket) & (df[metric_col] > 0)]
     
     if df_bucket.empty:
@@ -257,23 +239,20 @@ def plot_horizontal_bar(df, metric_col, bucket, title_suffix, color):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def plot_treemap(df, metric_col, title_suffix):
+def plot_treemap(df, metric_col, title_suffix, outlet_name):
     """Creates a treemap to show hierarchical contribution by Category and Aging Bucket."""
     # Filter out 0 values for a meaningful treemap
     df_filtered = df[df[metric_col] > 0]
     if df_filtered.empty: return st.warning("No data to display in the Treemap.")
         
-    # The path no longer needs 'Outlet' since the input 'df' is already single-outlet or aggregated
-    if selected_outlet_single == AGGREGATE_OPTION:
-        path_list = [px.Constant(AGGREGATE_OPTION), 'Category', 'Aging Bucket']
-    else:
-        path_list = [px.Constant(f"Outlet: {selected_outlet_single}"), 'Category', 'Aging Bucket']
+    # Path is now just Category -> Aging Bucket, with the outlet name in the root constant
+    path_list = [px.Constant(f"Outlet: {outlet_name}"), 'Category', 'Aging Bucket']
         
     fig = px.treemap(
         df_filtered,
         path=path_list,
         values=metric_col,
-        title=f'Hierarchical Aging Contribution for {selected_outlet_single} ({title_suffix})',
+        title=f'Hierarchical Aging Contribution for Outlet {outlet_name} ({title_suffix})',
         color=metric_col,
         color_continuous_scale='Reds',
         hover_data=['Category', 'Aging Bucket', 'Qty', 'Value'] 
@@ -284,15 +263,12 @@ def plot_treemap(df, metric_col, title_suffix):
 # --- 6. Main Content Tabs ---
 tab1, tab2, tab3 = st.tabs(["📈 Aging Distribution (Days)", "🌳 Treemap", "📋 Original Table Data"])
 
-if df_filtered_long_grouped.empty:
-    st.info("Please select a valid outlet and categories using the sidebar filters to view the data.")
+if df_filtered_long.empty:
+    st.info("No data to display for the selected outlet and categories.")
 else:
     with tab1:
-        st.header(f"Aging Distribution Analysis: {title_suffix}")
-        if selected_outlet_single == AGGREGATE_OPTION:
-             st.caption("Data is **aggregated** across all outlets. Hover over any bar to see the total Quantity and Value.")
-        else:
-             st.caption(f"Showing data for **Outlet {selected_outlet_single}**. Hover over any bar to see the Quantity and Value.")
+        st.header(f"Aging Distribution Analysis for Outlet: {selected_outlet} ({title_suffix})")
+        st.caption("Hover over any bar to see the Quantity and Value for that category and time bucket.")
         st.markdown("---")
 
         # Define buckets and colors
@@ -302,29 +278,27 @@ else:
         # Create two columns for a neat layout of the four charts
         col_charts_1, col_charts_2 = st.columns(2)
         
-        # Plot the four separate horizontal bar charts using the grouped data
+        # Plot the four separate horizontal bar charts using the filtered long data
         with col_charts_1:
-            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
+            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[0], title_suffix, bucket_colors[0])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[1], title_suffix, bucket_colors[1])
+            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[1], title_suffix, bucket_colors[1])
 
         with col_charts_2:
-            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[2], title_suffix, bucket_colors[2])
+            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[2], title_suffix, bucket_colors[2])
             st.markdown("---")
-            plot_horizontal_bar(df_filtered_long_grouped, metric_col, aging_buckets[3], title_suffix, bucket_colors[3])
+            plot_horizontal_bar(df_filtered_long, metric_col, aging_buckets[3], title_suffix, bucket_colors[3])
 
     with tab2:
         st.header(f"Hierarchical Aging Contribution: {title_suffix}")
-        # The Treemap must use the raw (non-aggregated) long data to correctly build the hierarchy if 'ALL' is selected
-        plot_treemap(df_filtered_long_grouped, metric_col, title_suffix)
-        st.caption("The Treemap shows the breakdown: **Outlet** $\\rightarrow$ **Category** $\\rightarrow$ **Aging Bucket**.")
+        plot_treemap(df_filtered_long, metric_col, title_suffix, selected_outlet)
+        st.caption("The Treemap shows the breakdown: **Category** $\\rightarrow$ **Aging Bucket**.")
 
     with tab3:
-        st.header(f"Original Data Table (Filtered Wide Format for {selected_outlet_single})")
-        st.caption("This table displays the raw data, including the **Outlet** column, filtered by your Category Selection.")
-        
-        # If 'ALL' is selected, this table will show all selected outlet data combined
-        st.dataframe(df_filtered_wide, use_container_width=True)
+        st.header(f"Original Data Table (Filtered Wide Format for Outlet: {selected_outlet})")
+        st.caption("This table displays the raw data for the selected outlet, filtered by your Category Selection.")
+        st.dataframe(df_filtered_wide.drop(columns=['Outlet'], errors='ignore'), use_container_width=True)
+        # We drop the Outlet column from the display table as it's redundant (always the same value)
 
 st.sidebar.markdown("---")
-st.sidebar.caption("App built for inventory aging analysis.")
+st.sidebar.caption("App built for single-outlet inventory aging analysis.")
