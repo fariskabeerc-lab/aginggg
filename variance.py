@@ -32,6 +32,22 @@ OUTLET_OPTIONS = ALL_OUTLETS
 AGING_BUCKETS = ['61-90', '91-120', '121-180', '181-360']
 
 
+# --- 🔐 Passwords for Outlets ---
+OUTLET_PASSWORDS = {
+    "Safa Oud Metha": "123",
+    "Azhar GT": "1234",
+    "Superstore": "12345",
+    "Liwan": "123456",
+    "Blue Pearl": "1234567",
+    "Sahat": "12345678",
+    "TayTay": "123456789",
+    "Safa Bur Dubai": "1234567890",
+    "Sabah al madina": "123",
+    "Azhar HP": "1234",
+    "jais SM": "12345"
+}
+
+
 # --- 1. Data Preparation (Loading a Single File) ---
 
 @st.cache_data
@@ -126,6 +142,22 @@ selected_outlet = st.sidebar.selectbox(
 if selected_outlet == '--- Select an Outlet ---':
     st.info("Please select an outlet from the dropdown menu to begin the analysis.")
     st.stop()
+
+# --- 🔒 Password Check (Added Section) ---
+normalized_outlet = selected_outlet.strip().lower()
+matched_outlet = next((key for key in OUTLET_PASSWORDS if key.strip().lower() == normalized_outlet), None)
+
+if matched_outlet:
+    password_input = st.sidebar.text_input(f"Enter Password for {selected_outlet}:", type="password")
+    correct_password = OUTLET_PASSWORDS[matched_outlet]
+    if not password_input:
+        st.warning("Please enter the password to continue.")
+        st.stop()
+    elif password_input != correct_password:
+        st.error("Incorrect password. Access denied.")
+        st.stop()
+else:
+    st.sidebar.success("✅ This outlet does not require a password.")
 
 
 # Load and transform data based on the single selected outlet
