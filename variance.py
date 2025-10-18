@@ -23,7 +23,7 @@ OUTLET_FILES = {
     "Sabah ": "SBM.xlsx",
     "Shams al madina": "SML.xlsx",
     "Port saeed": "SPS.xlsx",
-    "Tay Tay": "TTD.xlsx",
+    "Tay Tay": "TTD.xlsx"
 }
 ALL_OUTLETS = list(OUTLET_FILES.keys())
 OUTLET_OPTIONS = ALL_OUTLETS
@@ -34,17 +34,23 @@ AGING_BUCKETS = ['61-90', '91-120', '121-180', '181-360']
 
 # --- 🔐 Passwords for Outlets ---
 OUTLET_PASSWORDS = {
-    "Safa Oud Metha": "123",
-    "Azhar GT": "1234",
-    "Superstore": "12345",
-    "Liwan": "123456",
-    "Blue Pearl": "1234567",
-    "Sahat": "12345678",
-    "TayTay": "123456789",
-    "Safa Bur Dubai": "1234567890",
-    "Sabah al madina": "123",
+    "Al madina Logistics": "111",
+   "Azhar GT": "1234", 
     "Azhar HP": "1234",
-    "jais SM": "12345"
+    "Blue pearl": "1234567",
+    "Fidha al madina": "222",
+    "Hadeqat": "333",
+    "Hilal Al madina": "444",
+    "Jais": "12345",
+    "Liwan": "123456",
+    "Super Store": "12345",
+    "Sahath": "12345678",
+    "Safa al madina Super": "1234567890",
+    "Safa al madina Oud mehta": "123",
+    "Sabah ": "123",
+    "Shams al madina": "555",
+    "Port saeed": "666",
+    "Tay Tay": "123456789"
 }
 
 
